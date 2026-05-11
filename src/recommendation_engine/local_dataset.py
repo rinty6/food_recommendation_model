@@ -1217,7 +1217,9 @@ class LocalFoodDataset:
             "AND protein_100g BETWEEN 0.0 AND 130.0 "
             "AND carbs_100g BETWEEN 0.0 AND 180.0 "
             "AND fat_100g BETWEEN 0.0 AND 130.0 "
-            "AND food_name IS NOT NULL"
+            "AND food_name IS NOT NULL "
+            "AND TRIM(food_name) <> '' "
+            "AND LOWER(TRIM(food_name)) <> 'unknown product'"
         )
         self._meal_regex = {
             "breakfast": _build_hint_pattern(BREAKFAST_HINTS),

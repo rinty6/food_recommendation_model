@@ -1220,6 +1220,10 @@ class RecommendationService:
 
     @staticmethod
     def _is_australian_user(demographics: dict[str, Any]) -> bool:
+        # v2: GoodHealthMate ships to Australian users only. Override via env var so the
+        # ML service doesn't depend on the backend correctly forwarding country/locale.
+        if normalize_text(os.getenv("FORCE_AUSTRALIAN_USER", "")) in {"1", "true", "yes", "on"}:
+            return True
         if not demographics:
             return False
         raw_text = " ".join(
