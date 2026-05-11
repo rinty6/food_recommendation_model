@@ -18,18 +18,24 @@ COPY src/ ./src/
 COPY app.py .
 
 # Download the pre-built DuckDB at image build time.
-# Pass the URL as a Railway build variable: FOOD_DB_URL=<github-release-url>
-# For local builds where the file is already present, mount it or set the path via LOCAL_FOOD_DB_PATH.
+# Set these two as Railway Build Variables (not env vars):
+#   FOOD_DB_URL    = https://github.com/USER/REPO/releases/download/v1.0.0/cleaned_food_data.duckdb
+#   GITHUB_TOKEN   = your classic PAT with repo scope
 ARG FOOD_DB_URL
+ARG GITHUB_TOKEN
 RUN apt-get update -qq && apt-get install -y --no-install-recommends wget ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p data/processed \
     && if [ -n "$FOOD_DB_URL" ]; then \
-           echo "Downloading DuckDB from $FOOD_DB_URL..." \
-           && wget -q --show-progress -O data/processed/cleaned_food_data.duckdb "$FOOD_DB_URL" \
-           && echo "Download complete."; \
+           echo "Downloading DuckDB..." \
+           && wget -q \
+                --header="Authorization: token ${GITHUB_TOKEN}" \
+                --header="Accept: application/octet-stream" \
+                -O data/processed/cleaned_food_data.duckdb \
+                "$FOOD_DB_URL" \
+           && echo "Download complete: $(du -sh data/processed/cleaned_food_data.duckdb)"; \
        else \
-           echo "FOOD_DB_URL not set — DuckDB must be mounted at /app/data/processed/cleaned_food_data.duckdb"; \
+           echo "FOOD_DB_URL not set — skipping download"; \
        fi
 
 EXPOSE 8080
