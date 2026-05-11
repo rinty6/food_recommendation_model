@@ -1,0 +1,109 @@
+{
+  "version": "v1",
+  "seed": 20260510,
+  "created_at_utc": "2026-05-11T10:12:14.369829+00:00",
+  "source_db": "data\\processed\\cleaned_food_data.duckdb",
+  "source_table": "cleaned_food_data",
+  "ratios": {
+    "train": 0.7,
+    "val": 0.15,
+    "test": 0.15
+  },
+  "totals": {
+    "train": 1000162,
+    "val": 214316,
+    "test": 214335,
+    "all": 1428813
+  },
+  "by_group": {
+    "beverage": {
+      "total": 210610,
+      "train": 147427,
+      "val": 31591,
+      "test": 31592
+    },
+    "bread_baked": {
+      "total": 35970,
+      "train": 25179,
+      "val": 5395,
+      "test": 5396
+    },
+    "breakfast": {
+      "total": 91860,
+      "train": 64301,
+      "val": 13779,
+      "test": 13780
+    },
+    "dairy_egg": {
+      "total": 20897,
+      "train": 14627,
+      "val": 3134,
+      "test": 3136
+    },
+    "dessert": {
+      "total": 136214,
+      "train": 95349,
+      "val": 20432,
+      "test": 20433
+    },
+    "other": {
+      "total": 587516,
+      "train": 411261,
+      "val": 88127,
+      "test": 88128
+    },
+    "pasta_grain": {
+      "total": 33151,
+      "train": 23205,
+      "val": 4972,
+      "test": 4974
+    },
+    "poultry": {
+      "total": 16476,
+      "train": 11533,
+      "val": 2471,
+      "test": 2472
+    },
+    "red_meat": {
+      "total": 25347,
+      "train": 17742,
+      "val": 3802,
+      "test": 3803
+    },
+    "salad": {
+      "total": 15006,
+      "train": 10504,
+      "val": 2250,
+      "test": 2252
+    },
+    "seafood": {
+      "total": 26750,
+      "train": 18725,
+      "val": 4012,
+      "test": 4013
+    },
+    "snack": {
+      "total": 196977,
+      "train": 137883,
+      "val": 29546,
+      "test": 29548
+    },
+    "soup_stew": {
+      "total": 17417,
+      "train": 12191,
+      "val": 2612,
+      "test": 2614
+    },
+    "vegetable": {
+      "total": 14622,
+      "train": 10235,
+      "val": 2193,
+      "test": 2194
+    }
+  },
+  "hashes": {
+    "train": "a2dcc883786b4336c3c8808bfed9ed5e48f180faedf0355c2457a8460e86933d",
+    "val": "5c86a3b0d167bf39616eb241091bfd0a0d55652a2f7a89fa0c948b06efcc95c6",
+    "test": "05099c2303cdb0b7062aeb8212cace81929d8b03b6ba7c2e8796d28f5ae5560d"
+  }
+}

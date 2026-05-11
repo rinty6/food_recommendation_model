@@ -1,0 +1,19 @@
+.env
+venv/
+__pycache__/
+*.pyc
+
+# Large data artifacts — regenerate with the data/scripts/* tools
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Results — large logs that don't need version control
+results/train_logs/*
+results/val_logs/*
+results/test_results/*
+!results/**/.gitkeep
+
+# Archived v1 benchmarks
+benchmarks_archive/*.zip

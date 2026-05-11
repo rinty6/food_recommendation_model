@@ -1,0 +1,19 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.*
+!.env.example
+
+# Data files not needed at runtime
+data/raw/
+data/splits/
+data/processed/*.parquet
+
+# Dev/eval tooling
+results/
+train/
+evaluate/
+tests/
+benchmarks_archive/
