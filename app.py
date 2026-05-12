@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 
 # Add src/ to path so `recommendation_engine` resolves correctly.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
@@ -16,6 +16,22 @@ load_dotenv()
 
 app = Flask(__name__)
 recommendation_service = RecommendationService.from_env()
+
+# Curated Food-101 dish images live at /app/static/food101/<category>.jpg inside the container.
+STATIC_FOOD101_DIR = Path(__file__).resolve().parent / "static" / "food101"
+
+
+@app.route("/static/food101/<path:filename>", methods=["GET"])
+def food101_image(filename: str):
+    return send_from_directory(STATIC_FOOD101_DIR, filename, max_age=86400)
+
+
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return jsonify({
+        "ok": True,
+        "food101_images_available": STATIC_FOOD101_DIR.exists() and any(STATIC_FOOD101_DIR.glob("*.jpg")),
+    })
 
 
 @app.route("/api/prime", methods=["POST"])

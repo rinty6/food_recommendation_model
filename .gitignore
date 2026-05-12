@@ -9,6 +9,10 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 
+# Curated Food-101 images: hosted on GitHub Releases, never committed
+static/food101/*
+!static/food101/.gitkeep
+
 # Results — large logs that don't need version control
 results/train_logs/*
 results/val_logs/*
