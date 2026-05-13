@@ -132,9 +132,13 @@ _RULES_RAW: list[tuple[list[str], str]] = [
     (["bread pudding"], "bread_pudding"),
     (["strawberry shortcake"], "strawberry_shortcake"),
     (["ice cream", "gelato"], "ice_cream"),
-    (["frozen yogurt", "froyo", "yoghurt", "yogurt"], "frozen_yogurt"),
+    # NOTE: "yogurt"/"yoghurt" alone is too greedy — matches yogurt-coated bars,
+    # banana yogurt drinks, etc. Require a dish-context token.
+    (["frozen yogurt", "froyo", "yogurt parfait", "yoghurt parfait"], "frozen_yogurt"),
     (["apple pie"], "apple_pie"),
-    (["cheese plate", "cheese platter", "parmesan", "grana padano", "tasty cheese", "feta", "cheddar"], "cheese_plate"),
+    # "cheese plate" / "cheese platter" only — bare "parmesan"/"cheddar"/"feta"
+    # match raw cheese ingredients which aren't visually cheese plates.
+    (["cheese plate", "cheese platter", "cheese board"], "cheese_plate"),
 ]
 
 
@@ -180,6 +184,12 @@ def main() -> int:
         action="store_true",
         help="Only process rows where is_australian = TRUE (recommended).",
     )
+    parser.add_argument(
+        "--category-cap",
+        type=int,
+        default=10,
+        help="Max food_ids that can share a single Food-101 category (default 10).",
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db)
@@ -208,9 +218,15 @@ def main() -> int:
     rules = _compile_rules()
     output: list[dict] = []
     matched_per_cat: dict[str, int] = {}
+    # Cap how many foods can share a single Food-101 image. Beyond this, the
+    # extra rows fall through to Tier 2/3 in the COALESCE — better a Woolworths
+    # match than 365 rows all displaying the same frozen-yogurt JPG.
+    per_category_cap = args.category_cap
     for rid, name in rows:
         cat = _match_category(str(name or ""), rules)
         if cat is None:
+            continue
+        if matched_per_cat.get(cat, 0) >= per_category_cap:
             continue
         output.append({
             "food_id": str(rid).strip(),
