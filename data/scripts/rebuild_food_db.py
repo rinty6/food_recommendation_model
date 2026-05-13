@@ -51,9 +51,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--src-db", required=True)
     parser.add_argument("--src-table", default="cleaned_food_data")
-    parser.add_argument("--images", help="OFF/FatSecret food_images.parquet")
+    parser.add_argument("--curated", help="curated_images.parquet (Tier 0 — manual review, highest priority)")
     parser.add_argument("--food101", help="food101_images.parquet (Tier 1)")
     parser.add_argument("--woolworths", help="woolworths_images.parquet (Tier 2)")
+    parser.add_argument("--images", help="OFF/FatSecret food_images.parquet (Tier 3 — fallback)")
     parser.add_argument("--out", required=True)
     parser.add_argument("--out-table", default="cleaned_food_data")
     parser.add_argument("--id-column", default="RecipeId")
@@ -69,26 +70,32 @@ def main() -> int:
     if out_path.exists():
         out_path.unlink()
 
-    images_path = Path(args.images) if args.images else None
+    curated_path = Path(args.curated) if args.curated else None
     food101_path = Path(args.food101) if args.food101 else None
     woolworths_path = Path(args.woolworths) if args.woolworths else None
+    images_path = Path(args.images) if args.images else None
 
     print(f"Building {out_path}")
-    print(f"  src   : {src_db}::{args.src_table}")
-    print(f"  off   : {images_path or '<skip>'}")
-    print(f"  food101: {food101_path or '<skip>'}")
+    print(f"  src       : {src_db}::{args.src_table}")
+    print(f"  curated   : {curated_path or '<skip>'}")
+    print(f"  food101   : {food101_path or '<skip>'}")
     print(f"  woolworths: {woolworths_path or '<skip>'}")
+    print(f"  off       : {images_path or '<skip>'}")
 
     out_con = duckdb.connect(str(out_path))
     out_con.execute(f"ATTACH '{src_db.as_posix()}' AS src (READ_ONLY)")
 
-    has_off = _create_view(out_con, "v_off", images_path, "image_url AS off_url")
+    has_curated = _create_view(out_con, "v_curated", curated_path, "image_url AS curated_url")
     has_f101 = _create_view(out_con, "v_f101", food101_path, "food101_image_url AS f101_url")
     has_wool = _create_view(out_con, "v_wool", woolworths_path, "woolworths_image_url AS wool_url")
+    has_off = _create_view(out_con, "v_off", images_path, "image_url AS off_url")
 
-    # Build the JOIN + COALESCE expression dynamically.
+    # Build the JOIN + COALESCE expression dynamically. Priority: curated > food101 > woolworths > off.
     joins = []
     sources = []   # in priority order
+    if has_curated:
+        joins.append(f"LEFT JOIN v_curated ON CAST(s.{args.id_column} AS VARCHAR) = v_curated.food_id")
+        sources.append("v_curated.curated_url")
     if has_f101:
         joins.append(f"LEFT JOIN v_f101 ON CAST(s.{args.id_column} AS VARCHAR) = v_f101.food_id")
         sources.append("v_f101.f101_url")
@@ -116,6 +123,12 @@ def main() -> int:
 
     # Per-source breakdown using the same COALESCE precedence.
     source_breakdown = []
+    if has_curated:
+        n = out_con.execute(
+            f"SELECT COUNT(*) FROM {args.out_table} t "
+            f"JOIN v_curated ON CAST(t.{args.id_column} AS VARCHAR) = v_curated.food_id"
+        ).fetchone()[0]
+        source_breakdown.append(("curated", n))
     if has_f101:
         n = out_con.execute(
             f"SELECT COUNT(*) FROM {args.out_table} t "
