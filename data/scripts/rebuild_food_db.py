@@ -51,7 +51,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--src-db", required=True)
     parser.add_argument("--src-table", default="cleaned_food_data")
-    parser.add_argument("--curated", help="curated_images.parquet (Tier 0 — manual review, highest priority)")
+    parser.add_argument("--curated", default="data/processed/curated_images.parquet",
+                        help="curated_images.parquet (Tier 0 — manual review, highest priority). "
+                             "Defaults to data/processed/curated_images.parquet — pass empty string to skip.")
     parser.add_argument("--food101", help="food101_images.parquet (Tier 1)")
     parser.add_argument("--woolworths", help="woolworths_images.parquet (Tier 2)")
     parser.add_argument("--images", help="OFF/FatSecret food_images.parquet (Tier 3 — fallback)")
@@ -70,7 +72,9 @@ def main() -> int:
     if out_path.exists():
         out_path.unlink()
 
-    curated_path = Path(args.curated) if args.curated else None
+    # Default looks at data/processed/curated_images.parquet but quietly skips if missing.
+    # Pass --curated '' to explicitly opt out.
+    curated_path = Path(args.curated) if args.curated and Path(args.curated).exists() else None
     food101_path = Path(args.food101) if args.food101 else None
     woolworths_path = Path(args.woolworths) if args.woolworths else None
     images_path = Path(args.images) if args.images else None
