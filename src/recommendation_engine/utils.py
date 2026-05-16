@@ -41,10 +41,12 @@ _TITLE_BRAND_PREFIXES = {
 }
 _BRAND_LIKE_PREFIX_MARKERS = {
     "bakery",
-    "bar",
+    # "bar" removed — AUSNUT has a legitimate "Bar" food category (energy bars).
     "bistro",
     "cafe",
-    "coffee",
+    # "coffee" removed — AUSNUT has "Iced coffee", "Coffee" categories;
+    # leaving it here strips "Iced coffee, commercially packaged" to just
+    # "commercially packaged" (false brand-prefix detection).
     "company",
     "deli",
     "foods",

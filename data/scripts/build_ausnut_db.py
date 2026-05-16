@@ -296,6 +296,32 @@ _NAME_BLOCK_TERMS_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Additional patterns that disqualify FRUIT rows as standalone side dishes —
+# a frozen banana or a cooked apple is usually a cooking ingredient, not a
+# side. Doesn't apply to mains because cooked protein (e.g. "Chicken, roasted")
+# is legit.
+_FRUIT_PROCESSING_RE = re.compile(
+    r"\b(?:frozen|cooked|stewed|preserved|canned|dehydrated|dried|puree|stewed)\b",
+    re.IGNORECASE,
+)
+
+# Categories where the fruit-processing filter applies. Specifically these are
+# fruit-and-similar categories where the unprocessed version is the natural side.
+_FRUIT_LIKE_CATEGORIES = frozenset({
+    "Apple", "Banana", "Pear", "Peach", "Strawberry", "Blueberry",
+    "Raspberry", "Cranberry", "Currant", "Blackberry", "Mango",
+    "Grape", "Pineapple", "Orange", "Kiwifruit", "Mandarin",
+    "Plum", "Apricot", "Cherry", "Lemon", "Lime", "Melon",
+    "Pomegranate", "Plantain", "Quince", "Dragon fruit", "Mulberry",
+    "Persimmon", "Lychee", "Nectarine", "Passionfruit", "Fig",
+    "Date", "Sultana", "Raisin", "Prune (dried plum)",
+    "Mixed berry", "Mixed fruit", "Fruit", "Tropical fruit",
+    "Tangerine or tangor", "Tangelo", "Babaco", "Custard apple",
+    "Durian", "Feijoa", "Grapefruit", "Guava", "Jackfruit",
+    "Mangosteen", "Pawpaw (papaya)", "Prickly pear", "Rambutan",
+    "Star fruit", "Tamarillo", "Wax jambu", "Cumquat (kumquat)",
+})
+
 
 def _annotate(df: pd.DataFrame) -> pd.DataFrame:
     """Add meal-slot safety columns using AUSNUT RecipeCategory as the canonical signal."""
@@ -306,21 +332,36 @@ def _annotate(df: pd.DataFrame) -> pd.DataFrame:
     # (e.g. "Acai, powder" has category "Acai" but name "powder" — not a meal).
     is_unprepared = name.str.contains(_NAME_BLOCK_TERMS_RE, na=False)
 
+    # Within fruit categories, processed forms (frozen, cooked, stewed, …) are
+    # cooking ingredients, not stand-alone sides. "Banana, frozen" is for
+    # smoothies; "Banana, cavendish, peeled, raw" is a real banana.
+    is_processed_fruit = (
+        cat.isin(_FRUIT_LIKE_CATEGORIES)
+        & name.str.contains(_FRUIT_PROCESSING_RE, na=False)
+    )
+
     # Start with everything blocked, then enable based on category
     df["breakfast_main_safe"] = cat.isin(BREAKFAST_MAIN_CATEGORIES) & ~is_unprepared
     df["lunch_main_safe"] = cat.isin(LUNCH_DINNER_MAIN_CATEGORIES) & ~is_unprepared
     df["dinner_main_safe"] = cat.isin(LUNCH_DINNER_MAIN_CATEGORIES) & ~is_unprepared
 
-    df["breakfast_side_safe"] = (cat.isin(SIDE_CATEGORIES) | cat.isin(DRINK_CATEGORIES)) & ~is_unprepared
-    df["lunch_side_safe"] = (cat.isin(SIDE_CATEGORIES) | cat.isin(DRINK_CATEGORIES)) & ~is_unprepared
-
-    # Dinner side: stricter — only veg / salad / soup, plus drinks
-    dinner_side_cats = (
-        DINNER_SIDE_FAMILY_MAP["salad"]
-        | DINNER_SIDE_FAMILY_MAP["vegetable"]
-        | DINNER_SIDE_FAMILY_MAP["soup"]
+    df["breakfast_side_safe"] = (
+        (cat.isin(SIDE_CATEGORIES) | cat.isin(DRINK_CATEGORIES))
+        & ~is_unprepared & ~is_processed_fruit
     )
-    df["dinner_side_safe"] = (cat.isin(dinner_side_cats) | cat.isin(DRINK_CATEGORIES)) & ~is_unprepared
+    df["lunch_side_safe"] = (
+        (cat.isin(SIDE_CATEGORIES) | cat.isin(DRINK_CATEGORIES))
+        & ~is_unprepared & ~is_processed_fruit
+    )
+
+    # Dinner side: previously veg/salad/soup only, but combo pools were getting
+    # starved (sometimes only 2-3 sides survived filtering). Now allow the full
+    # SIDE_CATEGORIES set so carb sides (Bread, Rice, Pasta) and vegetables can
+    # all serve as dinner sides. Drinks remain too.
+    df["dinner_side_safe"] = (
+        (cat.isin(SIDE_CATEGORIES) | cat.isin(DRINK_CATEGORIES))
+        & ~is_unprepared & ~is_processed_fruit
+    )
     df["dinner_side_family"] = cat.map(_dinner_side_family_from_cat)
     df["dinner_side_priority"] = df["dinner_side_family"].map(_dinner_side_priority).astype("int16")
 
