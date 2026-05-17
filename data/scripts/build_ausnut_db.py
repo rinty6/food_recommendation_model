@@ -461,16 +461,41 @@ def main() -> int:
     # AUSNUT IS Australian — overwrite any inconsistencies
     df["is_australian"] = True
 
-    # Serving-size derivation. AUSNUT reports nutrients per 100 g and lists
-    # RecipeServings="100g" for every row, so a 100 g serving is the natural unit.
-    df["serving_grams"] = 100.0
+    # Role-aware serving sizes. AUSNUT reports per-100g nutrients, but a "100g
+    # serving" is unrealistically small for mains/drinks. The engine targets
+    # ~1,100 kcal for dinner at 2,200 kcal/day; if all foods are 100g servings,
+    # main+side+drink combos peak around 500-600 kcal and the calorie-fit
+    # filter rejects everything (valid_pool=0).
+    #
+    # Heuristic — derived from typical Australian portion guidelines:
+    #   - Mains      : 250 g serving (chicken breast, fish fillet, pasta dish)
+    #   - Sides      : 150 g serving (vegetables, rice, salad)
+    #   - Drinks     : 250 g/ml serving (250 ml beverage)
+    #   - Snack/etc. : 100 g default
+    cat_for_serving = df["RecipeCategory"].fillna("").str.strip()
+    is_main_cat = cat_for_serving.isin(
+        BREAKFAST_MAIN_CATEGORIES | LUNCH_DINNER_MAIN_CATEGORIES
+    )
+    is_drink_cat = cat_for_serving.isin(DRINK_CATEGORIES)
+    is_side_cat = cat_for_serving.isin(SIDE_CATEGORIES)
+
+    # main wins over side when a category is in both (e.g. "Bread" is both lunch
+    # main and side — recommend portion sized for main use).
+    serving_grams = pd.Series(100.0, index=df.index)
+    serving_grams = serving_grams.where(~is_side_cat, 150.0)
+    serving_grams = serving_grams.where(~is_drink_cat, 250.0)
+    serving_grams = serving_grams.where(~is_main_cat, 250.0)
+    df["serving_grams"] = serving_grams
+
+    scale = df["serving_grams"].astype(float) / 100.0
     for src_col, dst_col in [
         ("Calories_100g", "serving_calories"),
         ("protein_100g", "serving_protein"),
         ("carbs_100g", "serving_carbs"),
         ("fat_100g", "serving_fats"),
     ]:
-        df[dst_col] = pd.to_numeric(df[src_col], errors="coerce").fillna(0.0)
+        per100 = pd.to_numeric(df[src_col], errors="coerce").fillna(0.0)
+        df[dst_col] = (per100 * scale).round(2)
 
     # Cheap health score from rating (1–5 → 0–1); will be replaced by a real
     # nutrient-derived score later.

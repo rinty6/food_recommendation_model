@@ -20,6 +20,7 @@ The app binds to 127.0.0.1 only — it's a local tool, not for deployment.
 from __future__ import annotations
 
 import argparse
+import sys
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,18 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 from flask import Flask, jsonify, request
+
+# Reuse the same category sets used to classify safety, so the curation tool's
+# role filter agrees with what the engine actually treats as drinks/mains/sides.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build_ausnut_db import (  # noqa: E402
+    BREAKFAST_MAIN_CATEGORIES,
+    DRINK_CATEGORIES,
+    LUNCH_DINNER_MAIN_CATEGORIES,
+    SIDE_CATEGORIES,
+)
+
+_ALL_MAIN_CATEGORIES = BREAKFAST_MAIN_CATEGORIES | LUNCH_DINNER_MAIN_CATEGORIES
 
 
 HTML_PAGE = """<!doctype html>
@@ -65,6 +78,9 @@ HTML_PAGE = """<!doctype html>
   .badge.woolworths { background: #fff3cd; color: #856404; }
   .badge.off { background: #f8d7da; color: #721c24; }
   .badge.none { background: #e2e3e5; color: #555; }
+  .badge.role-main { background: #fde2e4; color: #842029; }
+  .badge.role-side { background: #d1e7dd; color: #0f5132; }
+  .badge.role-drink { background: #cfe2ff; color: #084298; }
   .actions { display: flex; gap: 6px; margin-top: auto; }
   .actions button { flex: 1; padding: 6px 8px; border: 1px solid #ccc; background: #fff;
                     border-radius: 6px; cursor: pointer; font-size: 12px; }
@@ -104,6 +120,12 @@ HTML_PAGE = """<!doctype html>
       <option value="woolworths">Woolworths (Tier 2)</option>
       <option value="off">OFF (Tier 3)</option>
       <option value="none">Missing image</option>
+    </select>
+    <select id="filter-role">
+      <option value="">Any role</option>
+      <option value="main">Mains only</option>
+      <option value="side">Sides only</option>
+      <option value="drink">Drinks only</option>
     </select>
     <select id="sort">
       <option value="missing-first">Sort: missing images first</option>
@@ -145,6 +167,7 @@ function buildQuery() {
     search: document.getElementById('search').value,
     slot: document.getElementById('filter-category').value,
     source: document.getElementById('filter-source').value,
+    role: document.getElementById('filter-role').value,
     sort: document.getElementById('sort').value,
   });
   return params.toString();
@@ -168,11 +191,13 @@ function renderGrid(data) {
     const img = food.image_url
       ? `<img src="${food.image_url}" onerror="this.outerHTML='<div class=placeholder>image not loading</div>'">`
       : `<div class="placeholder">no image</div>`;
+    const roleBadges = (food.role || []).map(r => `<span class="badge role-${r}">${r}</span>`).join('');
     card.innerHTML = `
       ${img}
       <div class="name">${escapeHtml(food.food_name || '(no name)')}</div>
       <div class="meta">
         <span class="badge ${food.source}">${food.source}</span>
+        ${roleBadges}
         <span style="opacity:.6">id: ${food.food_id}</span>
       </div>
       <div class="actions">
@@ -237,6 +262,7 @@ function changePage(delta) {
 document.getElementById('search').addEventListener('input', () => { currentPage = 1; loadFoods(); });
 document.getElementById('filter-category').addEventListener('change', () => { currentPage = 1; loadFoods(); });
 document.getElementById('filter-source').addEventListener('change', () => { currentPage = 1; loadFoods(); });
+document.getElementById('filter-role').addEventListener('change', () => { currentPage = 1; loadFoods(); });
 document.getElementById('sort').addEventListener('change', () => { currentPage = 1; loadFoods(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal({target: {id: 'modal-bg'}}); });
 
@@ -261,6 +287,18 @@ def _classify_source(url: str, curated_ids: set[str], food_id: str) -> str:
     if "openfoodfacts.org" in url or "off." in url:
         return "off"
     return "curated"  # unknown URL — assume manually added
+
+
+def _classify_role(recipe_category: str) -> list[str]:
+    """Return the list of roles (main/side/drink) this food can play."""
+    roles: list[str] = []
+    if recipe_category in _ALL_MAIN_CATEGORIES:
+        roles.append("main")
+    if recipe_category in SIDE_CATEGORIES:
+        roles.append("side")
+    if recipe_category in DRINK_CATEGORIES:
+        roles.append("drink")
+    return roles
 
 
 # --- Curation storage --------------------------------------------------------
@@ -316,6 +354,7 @@ def create_app(db_path: Path, curated_path: Path) -> Flask:
         search = (request.args.get("search") or "").strip()
         slot = (request.args.get("slot") or "").strip()
         source = (request.args.get("source") or "").strip()
+        role = (request.args.get("role") or "").strip()
         sort = (request.args.get("sort") or "missing-first").strip()
 
         con = duckdb.connect(str(db_path), read_only=True)
@@ -333,28 +372,35 @@ def create_app(db_path: Path, curated_path: Path) -> Flask:
         where_sql = " AND ".join(where) if where else "TRUE"
 
         all_rows = con.execute(
-            f"SELECT RecipeId, food_name, image_url FROM cleaned_food_data WHERE {where_sql}"
+            f"SELECT RecipeId, food_name, RecipeCategory, image_url FROM cleaned_food_data WHERE {where_sql}"
         ).fetchall()
         con.close()
 
         curated_ids = store.ids()
         rows = []
-        for rid, name, url in all_rows:
+        for rid, name, recipe_cat, url in all_rows:
             food_id = str(rid)
             # If curated, override with curated URL
             curated_url = store.get(food_id)
             effective_url = curated_url if (curated_url is not None and curated_url != "") else (url or "")
             src = _classify_source(effective_url, curated_ids, food_id)
+            row_role = _classify_role(recipe_cat or "")
             rows.append({
                 "food_id": food_id,
                 "food_name": name or "",
+                "category": recipe_cat or "",
                 "image_url": effective_url,
                 "source": src,
+                "role": row_role,
             })
 
         # Source filter
         if source:
             rows = [r for r in rows if r["source"] == source]
+
+        # Role filter (main / side / drink) — uses RecipeCategory as the signal
+        if role:
+            rows = [r for r in rows if role in r["role"]]
 
         # Sort: missing-first puts uncovered rows at the top so user curates them
         if sort == "missing-first":
